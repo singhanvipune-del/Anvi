@@ -3,8 +3,22 @@ import pandas as pd
 import numpy as np
 import datetime
 import json
+import logging
+from pathlib import Path
 
-# Import helper modules
+
+LOG_PATH = Path.cwd() / "logs"
+LOG_PATH.mkdir(exist_ok=True)
+log_file = LOG_PATH / "app.log"
+
+logging.basicConfig(
+    filename=str(log_file),
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+logger = logging.getLogger("ai_data_cleaner")
+
+
 from detection.detect import get_missing_counts, count_duplicates, numeric_outlier_counts
 from fixes.apply_fixes import (
     fill_missing_values,
@@ -16,7 +30,7 @@ from fixes.apply_fixes import (
 )
 from utils.storage import save_prefs, load_prefs, append_session, load_sessions
 
-# Optional AI-based suggester
+
 try:
     from suggestions.suggest import suggest_issues
 except Exception:
@@ -42,7 +56,7 @@ except Exception:
                     })
         return suggestions[:top_n]
 
-# ---------------- UI Layout ----------------
+
 st.set_page_config(
     page_title="AI Data Cleaner",
     page_icon="🧹",
@@ -50,18 +64,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Header
-st.markdown("<h1 style='color:#0f172a'>🧠 AI Data Cleaning Console</h1>", unsafe_allow_html=True)
-st.markdown("Upload a CSV and let the AI detect issues, clean data, and suggest fixes automatically.")
 
-# Sidebar
+st.markdown("""
+<div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:15px">
+<h3 style="margin:0">🧠 Welcome — AI Data Cleaner</h3>
+<p style="margin:4px 0 0">Upload a CSV, click <b>Apply Auto Cleaning</b>, optionally normalize text, then download the cleaned file.</p>
+<ul style="margin:6px 0 0;padding-left:20px">
+<li>Handles: missing values, duplicates, wrong types, fuzzy text, capitalization</li>
+<li>Try a sample: <code>samples/messy_sample.csv</code></li>
+</ul>
+</div>
+""", unsafe_allow_html=True)
+
+
 with st.sidebar:
-    st.header("Controls")
+    st.header("⚙️ Controls")
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
     st.markdown("---")
     st.write("💡 Tips:")
-    st.write("- Files should include headers.")
-    st.write("- Try samples/messy_sample.csv for demo.")
+    st.write("- File must include headers")
+    st.write("- You can test with sample CSVs")
     st.markdown("---")
 
     with st.expander("🕒 Session History"):
@@ -73,20 +95,26 @@ with st.sidebar:
                 st.markdown(f"*{s.get('timestamp','-')}* — {s.get('file_name','-')}")
                 st.markdown(f"Rows after: {s.get('rows_after','-')}  \nActions: {', '.join(s.get('actions',[]))}")
                 st.markdown("---")
-
         if st.button("Download session log"):
-            st.download_button("Download JSON", json.dumps(load_sessions(), indent=2), "sessions.json", "application/json")
+            st.download_button("Download JSON", json.dumps(load_sessions(), indent=2),
+                               "sessions.json", "application/json")
 
-# Main Panel
+
 if not uploaded_file:
     st.info("⬆️ Please upload a CSV file to begin.")
 else:
-    df = pd.read_csv(uploaded_file)
-    original_rows = df.shape[0]
+    try:
+        df = pd.read_csv(uploaded_file)
+        logger.info(f"Loaded file: {uploaded_file.name} with {df.shape[0]} rows and {df.shape[1]} columns.")
+    except Exception as e:
+        st.error("Unable to read CSV — check encoding or file format.")
+        logger.exception("CSV read failed")
+        st.stop()
 
+    original_rows = df.shape[0]
     left, right = st.columns((2, 1))
 
-    # ---------- Left Panel: Detection ----------
+
     with left:
         st.subheader("📊 Data Preview")
         st.dataframe(df.head())
@@ -109,7 +137,7 @@ else:
         else:
             st.write("No major numeric outliers detected.")
 
-    # ---------- Right Panel: Fixes ----------
+
     with right:
         st.subheader("💡 AI Suggestions")
         suggestions = suggest_issues(df, top_n=5)
@@ -120,45 +148,65 @@ else:
                 st.info(f"{s['message']}")
                 key = f"apply_{i}{s.get('column','')}{s.get('type','')}"
                 if st.button(f"Apply suggestion for {s.get('column','')}", key=key):
-                    if s['type'] == 'missing_high':
-                        df[s['column']] = df[s['column']].fillna("Unknown")
-                        st.success(f"Filled missing in {s['column']} with 'Unknown'.")
-                    elif s['type'] == 'parse_dates':
-                        try:
+                    try:
+                        if s['type'] == 'missing_high':
+                            df[s['column']] = df[s['column']].fillna("Unknown")
+                            st.success(f"Filled missing in {s['column']} with 'Unknown'.")
+                        elif s['type'] == 'parse_dates':
                             df[s['column']] = pd.to_datetime(df[s['column']], errors='coerce')
                             st.success(f"Parsed {s['column']} to datetime.")
-                        except Exception as e:
-                            st.error(f"Failed to parse: {e}")
-                    else:
-                        st.warning("Custom handling required for this issue.")
+                        logger.info(f"Applied suggestion: {s}")
+                    except Exception as e:
+                        st.error(f"Failed to apply suggestion: {e}")
+                        logger.exception("Suggestion failed")
 
-        # ---------- Auto Cleaning ----------
+
         st.markdown("---")
         st.subheader("🧩 Auto Cleaning")
-        strategy = st.selectbox("Missing value strategy", ["mean", "median", "zero"], index=0)
+        strategy = st.selectbox(
+            "Missing value strategy",
+            ["mean", "median", "zero"],
+            index=0,
+            help="Choose how numeric missing values are filled."
+        )
 
         if st.button("🚀 Apply Auto Cleaning"):
-            try:
-                df_before = df.copy()
-                df = apply_auto_corrections(df, strategy=strategy, normalize_text=True, parse_dates_flag=True)
-                st.success("✅ Data cleaned successfully!")
-                st.dataframe(df.head())
+            start_ts = datetime.datetime.utcnow()
+            with st.spinner("Cleaning data — please wait..."):
+                try:
+                    df_before = df.copy()
+                    df = apply_auto_corrections(df, strategy=strategy,
+                                                normalize_text=True, parse_dates_flag=True)
+                    duration = (datetime.datetime.utcnow() - start_ts).total_seconds()
+                    st.success("✅ Data cleaned successfully!")
 
-                append_session({
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                    "file_name": uploaded_file.name,
-                    "rows_before": df_before.shape[0],
-                    "rows_after": df.shape[0],
-                    "actions": ["apply_auto_corrections"],
-                    "strategy": strategy
-                })
-            except Exception as e:
-                st.error(f"Cleaning failed: {e}")
 
-        # ---------- Text Fixes ----------
+                    st.write("Before / After sample")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("Before")
+                        st.dataframe(df_before.head(5))
+                    with col2:
+                        st.write("After")
+                        st.dataframe(df.head(5))
+
+                    append_session({
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                        "file_name": uploaded_file.name,
+                        "rows_before": df_before.shape[0],
+                        "rows_after": df.shape[0],
+                        "actions": ["apply_auto_corrections"],
+                        "strategy": strategy,
+                        "duration_seconds": duration
+                    })
+                    logger.info("Auto cleaning completed successfully.")
+                except Exception as e:
+                    st.error(f"Cleaning failed: {e}")
+                    logger.exception("Auto cleaning failed")
+
+
         st.markdown("---")
         st.subheader("🪄 Text Formatting Fixes")
-
         text_cols = df.select_dtypes(include=['object', 'string']).columns.tolist()
         if text_cols:
             selected_cols = st.multiselect("Select columns to capitalize (or leave empty for all):", text_cols)
@@ -169,26 +217,24 @@ else:
                     st.dataframe(df.head())
                 except Exception as e:
                     st.error(f"Capitalization fix failed: {e}")
+                    logger.exception("Capitalization fix failed")
         else:
             st.info("No text columns found for capitalization.")
 
-        # ---------- Fuzzy Normalization ----------
+
         st.markdown("---")
         st.subheader("🧠 Fuzzy Normalization")
-
         if text_cols:
             col_to_dedupe = st.selectbox(
                 "Select a column to fuzzy-normalize",
                 options=["(none)"] + text_cols,
                 key="fuzzy_select"
             )
-
             if col_to_dedupe != "(none)":
                 if st.button(f"Apply fuzzy dedupe to {col_to_dedupe}", key="fuzzy_single"):
                     df = fuzzy_dedupe_by_column(df, col_to_dedupe, threshold=88)
                     df = normalize_text_case(df, [col_to_dedupe])
                     st.success(f"Fuzzy normalization + capitalization applied on '{col_to_dedupe}'.")
-
             if st.checkbox("Apply fuzzy normalization to ALL text columns", key="fuzzy_all_checkbox"):
                 if st.button("Run fuzzy normalization (All Columns)", key="fuzzy_all_button"):
                     for col in text_cols:
@@ -198,16 +244,18 @@ else:
         else:
             st.info("No text columns found for fuzzy normalization.")
 
-        # ---------- Download + Save Prefs ----------
+
         st.markdown("---")
         csv_bytes = df.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Download Cleaned CSV", csv_bytes, file_name="cleaned_data.csv", mime="text/csv")
+        st.download_button("⬇️ Download Cleaned CSV", csv_bytes,
+                           file_name="cleaned_data.csv", mime="text/csv")
 
         if st.button("Save my cleaning preferences"):
             save_prefs({"missing_strategy": strategy})
             st.success("Preferences saved.")
+            logger.info("User preferences saved.")
 
-    # ---------- Summary + Session ----------
+
     st.markdown("---")
     if st.button("Save current session to history"):
         session = {
@@ -220,6 +268,7 @@ else:
         }
         append_session(session)
         st.success("Session saved to history.")
+        logger.info("Session saved manually.")
 
     st.markdown("### 📈 Summary")
     st.write(f"Rows before: *{original_rows}* — Rows now: *{df.shape[0]}*")
