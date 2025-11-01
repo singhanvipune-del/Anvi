@@ -79,11 +79,12 @@ st.markdown("""
 
 with st.sidebar:
     st.header("⚙️ Controls")
-    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+    uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx", "xls"])
     st.markdown("---")
     st.write("💡 Tips:")
+    st.write("- Supported formats: CSV, XLSX, XLS")
     st.write("- File must include headers")
-    st.write("- You can test with sample CSVs")
+    st.write("- Try samples/messy_sample.csv for demo.")
     st.markdown("---")
 
     with st.expander("🕒 Session History"):
@@ -101,16 +102,22 @@ with st.sidebar:
 
 
 if not uploaded_file:
-    st.info("⬆️ Please upload a CSV file to begin.")
+    st.info("⬆️ Please upload a CSV or Excel file to begin.")
 else:
+    file_name = uploaded_file.name.lower()
     try:
-        df = pd.read_csv(uploaded_file)
-        logger.info(f"Loaded file: {uploaded_file.name} with {df.shape[0]} rows and {df.shape[1]} columns.")
-    except Exception as e:
-        st.error("Unable to read CSV — check encoding or file format.")
-        logger.exception("CSV read failed")
-        st.stop()
+        if file_name.endswith(".csv"):
+           df = pd.read_csv(uploaded_file)
+        elif file_name.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(uploaded_file)
+        else:
+            st.error("Unsupported file type. Please upload a CSV or Excel file to begin.")
+            st.stop()
 
+    except Exception as e:
+        st.error(f"Failed to read the file: {e}")
+        st.stop()
+       
     original_rows = df.shape[0]
     left, right = st.columns((2, 1))
 
