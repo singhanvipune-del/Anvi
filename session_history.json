@@ -49,6 +49,60 @@
         "manual_changes"
       ],
       "strategy": "mean"
+    },
+    {
+      "timestamp": "2025-11-02T16:43:35.071680Z",
+      "file_name": "test_data.xlsx",
+      "rows_before": 5,
+      "rows_after": 5,
+      "actions": [
+        "apply_auto_corrections"
+      ],
+      "strategy": "mean",
+      "duration_seconds": 0.090456
+    },
+    {
+      "timestamp": "2025-11-02T16:44:39.833245Z",
+      "file_name": "test_data.xlsx",
+      "rows_before": 5,
+      "rows_after": 5,
+      "actions": [
+        "apply_auto_corrections"
+      ],
+      "strategy": "mean",
+      "duration_seconds": 0.077507
+    },
+    {
+      "timestamp": "2025-11-02T16:45:04.562447Z",
+      "file_name": "test_data.xlsx",
+      "rows_before": 5,
+      "rows_after": 5,
+      "actions": [
+        "apply_auto_corrections"
+      ],
+      "strategy": "mean",
+      "duration_seconds": 0.079897
+    },
+    {
+      "timestamp": "2025-11-02T17:28:31.908677Z",
+      "file_name": "test_data.xlsx",
+      "rows_before": 5,
+      "rows_after": 5,
+      "actions": [
+        "apply_auto_corrections"
+      ],
+      "strategy": "mean",
+      "duration_seconds": 0.066132
+    },
+    {
+      "timestamp": "2025-11-02T17:34:55.211711Z",
+      "file_name": "test_data.xlsx",
+      "rows_before": 5,
+      "rows_after": 5,
+      "actions": [
+        "apply_auto_corrections"
+      ],
+      "strategy": "mean"
     }
   ]
 }
