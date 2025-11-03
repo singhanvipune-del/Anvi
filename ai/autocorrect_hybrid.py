@@ -12,13 +12,8 @@ def load_custom_words():
             return set(w.strip().lower() for w in f.readlines() if w.strip())
     return set()
 
-def hybrid_text_clean(text):
-    """
-    Correct text using a hybrid approach:
-      1. Skip domain-specific / custom words
-      2. SpellChecker for simple typos
-      3. Fuzzy matching for tougher errors
-    """
+def hybrid_text_clean_single(text):
+    """Correct a single text string intelligently."""
     spell = SpellChecker()
     custom_words = load_custom_words()
     words = text.split()
@@ -52,3 +47,12 @@ def hybrid_text_clean(text):
             corrected.append(word)
 
     return " ".join(corrected)
+
+
+def hybrid_text_clean(df):
+    """
+    Apply hybrid text correction to all text columns in the DataFrame.
+    """
+    for col in df.select_dtypes(include=['object', 'string']).columns:
+        df[col] = df[col].astype(str).apply(hybrid_text_clean_single)
+    return df
