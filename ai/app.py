@@ -17,8 +17,9 @@ from fixes.apply_fixes import (
 )
 from utils.storage import save_prefs, load_prefs, append_session, load_sessions
 
-# Import new hybrid AI text cleaning module
+# --- Import AI modules ---
 from ai.autocorrect_hybrid import hybrid_text_clean
+from ai.context_ai_correct import gpt_context_correction
 
 # Optional AI-based suggester
 try:
@@ -46,6 +47,7 @@ except Exception:
                     })
         return suggestions[:top_n]
 
+
 # ---------------- UI Layout ----------------
 st.set_page_config(
     page_title="AI Data Cleaner",
@@ -61,7 +63,7 @@ st.markdown("Upload a CSV or Excel file and let the AI detect issues, clean data
 # Sidebar
 with st.sidebar:
     st.header("Controls")
-    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+    uploaded_file = st.file_uploader("Upload file", type=["csv", "xlsx"])
     st.markdown("---")
     st.write("💡 Tips:")
     st.write("- Files should include headers.")
@@ -81,15 +83,17 @@ with st.sidebar:
         if st.button("Download session log"):
             st.download_button("Download JSON", json.dumps(load_sessions(), indent=2), "sessions.json", "application/json")
 
+
 # Main Panel
 if not uploaded_file:
     st.info("⬆️ Please upload a CSV or Excel file to begin.")
 else:
-    # Handle both CSV and Excel files
+    # --- File Reading ---
     try:
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
         else:
+            import openpyxl
             df = pd.read_excel(uploaded_file)
     except Exception as e:
         st.error(f"Failed to read the file: {e}")
@@ -170,6 +174,7 @@ else:
         # ---------- Text Fixes ----------
         st.markdown("---")
         st.subheader("🪄 Text Formatting Fixes")
+
         text_cols = df.select_dtypes(include=['object', 'string']).columns.tolist()
         if text_cols:
             selected_cols = st.multiselect("Select columns to capitalize (or leave empty for all):", text_cols)
@@ -186,12 +191,14 @@ else:
         # ---------- Fuzzy Normalization ----------
         st.markdown("---")
         st.subheader("🧠 Fuzzy Normalization")
+
         if text_cols:
             col_to_dedupe = st.selectbox(
                 "Select a column to fuzzy-normalize",
                 options=["(none)"] + text_cols,
                 key="fuzzy_select"
             )
+
             if col_to_dedupe != "(none)":
                 if st.button(f"Apply fuzzy dedupe to {col_to_dedupe}", key="fuzzy_single"):
                     df = fuzzy_dedupe_by_column(df, col_to_dedupe, threshold=88)
@@ -207,49 +214,22 @@ else:
         else:
             st.info("No text columns found for fuzzy normalization.")
 
-        # ---------- Hybrid AI Text Cleanup ----------
+        # ---------- Hybrid + GPT Correction ----------
         st.markdown("---")
-        st.subheader("🤖 AI Hybrid Text Cleanup")
+        st.subheader("🤖 AI Text Cleanup")
+
+        enable_context_ai = st.checkbox("✨ Enable Deep Context-Aware Correction (GPT)", value=False)
 
         if st.button("Run Hybrid AI Text Correction"):
-            with st.spinner("Cleaning text with AI + local spellcheck..."):
-                df = hybrid_text_clean(df)
-                st.success("✅ Text cleaned successfully with hybrid AI model!")
+            try:
+                for col in text_cols:
+                    df[col] = df[col].astype(str).apply(hybrid_text_clean)
+                    if enable_context_ai:
+                        df[col] = df[col].apply(gpt_context_correction)
+                st.success("✅ Hybrid AI Text Correction applied successfully!")
                 st.dataframe(df.head())
-
-                # ---------------- Custom Dictionary Manager ----------------
-                st.markdown("---")
-                st.subheader("📘 Custom Dictionary")
-
-                st.write("Add or remove words that should **never be auto-corrected** (names, brands, acronyms).")
-
-                custom_path = "custom_words.txt"
-
-                # Load existing words
-                if os.path.exists(custom_path):
-                    with open(custom_path, "r") as f:
-                        custom_words = [w.strip() for w in f.readlines() if w.strip()]
-                else:
-                    custom_words = []
-
-                new_word = st.text_input("➕ Add new word (e.g., Drishti, Infosys, GPT)")
-                if st.button("Add Word to Dictionary"):
-                    if new_word and new_word not in custom_words:
-                        custom_words.append(new_word)
-                        with open(custom_path, "w") as f:
-                            f.write("\n".join(custom_words))
-                        st.success(f"Added '{new_word}' to dictionary.")
-
-                if custom_words:
-                    st.write("Current protected words:")
-                    st.write(", ".join(custom_words))
-
-                    remove_word = st.selectbox("Remove a word", ["(none)"] + custom_words)
-                    if remove_word != "(none)" and st.button("Remove Selected Word"):
-                        custom_words.remove(remove_word)
-                        with open(custom_path, "w") as f:
-                            f.write("\n".join(custom_words))
-                        st.success(f"Removed '{remove_word}' successfully.")
+            except Exception as e:
+                st.error(f"AI text correction failed: {e}")
 
         # ---------- Download + Save Prefs ----------
         st.markdown("---")
