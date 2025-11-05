@@ -19,7 +19,7 @@ from utils.storage import save_prefs, load_prefs, append_session, load_sessions
 
 # --- Import AI modules ---
 from ai.autocorrect_hybrid import hybrid_text_suggestions
-from ai.context_ai_correct import gpt_context_correction
+from ai.context_ai_correct import safe_context_ai_clean
 
 # Optional AI-based suggester
 try:
