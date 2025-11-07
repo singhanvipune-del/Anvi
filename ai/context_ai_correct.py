@@ -3,12 +3,19 @@ import os
 import spacy
 from spellchecker import SpellChecker
 from langdetect import detect, DetectorFactory
-from ai.autocorrect_hybrid import hybrid_text_clean  # ✅ hybrid import
+from ai.autocorrect_hybrid import hybrid_text_clean
 
 # Make language detection stable
 DetectorFactory.seed = 0
 
-# ✅ Try multilingual model first, fallback to English if not available
+import spacy
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    from spacy.cli import download
+    download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
+
 try:
     nlp = spacy.load("xx_ent_wiki_sm")  # multilingual NER
 except:

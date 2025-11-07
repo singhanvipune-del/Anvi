@@ -4,151 +4,21 @@ import numpy as np
 import datetime
 import json
 import os
-import re
-import spacy
-from spellchecker import SpellChecker
+
+# 🌐 Language and NLP setup
 from langdetect import detect, DetectorFactory
-
-# ---------------- AI UTILITIES ----------------
-from fuzzywuzzy import fuzz
-
-# Stable language detection
 DetectorFactory.seed = 0
 
-# Load multilingual NER model (fallback to English)
+import spacy
+# ✅ Auto-download and load English NLP model safely
 try:
-    nlp = spacy.load("xx_ent_wiki_sm")
-except:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    from spacy.cli import download
+    download("en_core_web_sm")
     nlp = spacy.load("en_core_web_sm")
 
-# Multilingual spellcheckers
-SPELL_CHECKERS = {
-    "en": SpellChecker(language='en'),
-    "fr": SpellChecker(language='fr'),
-    "es": SpellChecker(language='es'),
-    "de": SpellChecker(language='de'),
-    "it": SpellChecker(language='it')
-}
-
-# Common typo fixes
-COMMON_REPLACEMENTS = {
-    "counrty": "country",
-    "adress": "address",
-    "hte": "the",
-    "teh": "the",
-    "recieve": "receive",
-    "collge": "college",
-    "technlogy": "technology",
-    "enviroment": "environment",
-    "reserch": "research",
-    "inndia": "India",
-    "imndfia": "India"
-}
-
-# Custom words protection file
-CUSTOM_WORDS_PATH = "custom_words.txt"
-
-def load_custom_words():
-    if os.path.exists(CUSTOM_WORDS_PATH):
-        with open(CUSTOM_WORDS_PATH, "r") as f:
-            return set(w.strip().lower() for w in f.readlines() if w.strip())
-    return set()
-
-def save_custom_word(word):
-    with open(CUSTOM_WORDS_PATH, "a") as f:
-        f.write(f"{word.lower()}\n")
-
-# ---------------- HYBRID + CONTEXT AI CLEANING ----------------
-def detect_language_safe(text):
-    try:
-        return detect(text)
-    except:
-        return "en"
-
-def is_named_entity(word):
-    if not isinstance(word, str) or len(word.strip()) == 0:
-        return False
-    doc = nlp(word)
-    return any(ent.label_ in ["PERSON", "ORG", "GPE", "LOC", "PRODUCT"] for ent in doc.ents)
-
-def hybrid_text_suggestions(text):
-    spell = SpellChecker()
-    custom_words = load_custom_words()
-    suggestions = []
-
-    if not isinstance(text, str):
-        text = str(text)
-    words = text.split()
-
-    for word in words:
-        clean = word.strip(".,!?;:").lower()
-        if clean.isdigit() or "@" in clean or clean in custom_words:
-            suggestions.append((word, word, 1.0))
-            continue
-        if clean in spell:
-            suggestions.append((word, word, 1.0))
-            continue
-        suggestion = spell.correction(clean)
-        score = fuzz.ratio(clean, suggestion) / 100 if suggestion else 0
-        if suggestion and score >= 0.7:
-            suggestions.append((word, suggestion, score))
-        else:
-            suggestions.append((word, word, 0.5))
-    return suggestions
-
-def hybrid_text_clean(text):
-    suggestions = hybrid_text_suggestions(text)
-    corrected_words = [s[1] for s in suggestions]
-    return " ".join(corrected_words)
-
-def correct_word(word, lang):
-    clean_word = re.sub(r'[^\w\s]', '', word.lower())
-    if is_named_entity(word):
-        return word
-    if clean_word in COMMON_REPLACEMENTS:
-        corrected = COMMON_REPLACEMENTS[clean_word]
-        if word.istitle():
-            corrected = corrected.capitalize()
-        elif word.isupper():
-            corrected = corrected.upper()
-        return corrected
-    spell = SPELL_CHECKERS.get(lang, SPELL_CHECKERS["en"])
-    if clean_word and clean_word not in spell:
-        suggestion = spell.correction(clean_word)
-        if suggestion and suggestion != clean_word:
-            if word.istitle():
-                suggestion = suggestion.capitalize()
-            elif word.isupper():
-                suggestion = suggestion.upper()
-            return suggestion
-    return word
-
-def gpt_context_correction(text):
-    if not isinstance(text, str):
-        text = str(text) if text is not None else ""
-    text = text.strip()
-    if text.isdigit() or len(text) <= 2:
-        return text
-    lang = detect_language_safe(text)
-    words = text.split()
-    corrected_words = [correct_word(w, lang) for w in words]
-    corrected_text = " ".join(corrected_words)
-    return re.sub(r'\s+', ' ', corrected_text).strip()
-
-def safe_context_ai_clean(df):
-    try:
-        for col in df.columns:
-            if str(df[col].dtype) not in ['object', 'string']:
-                continue
-            df[col] = df[col].astype(str).fillna("")
-            df[col] = df[col].apply(lambda x: gpt_context_correction(hybrid_text_clean(x)))
-        return df
-    except Exception as e:
-        print(f"❌ Context AI correction failed: {e}")
-        return df
-
-
-# ---------------- ORIGINAL APP BELOW ----------------
+# Import helper modules
 from detection.detect import get_missing_counts, count_duplicates, numeric_outlier_counts
 from fixes.apply_fixes import (
     fill_missing_values,
@@ -158,6 +28,22 @@ from fixes.apply_fixes import (
     apply_auto_corrections,
     fuzzy_dedupe_by_column
 )
+from utils.storage import save_prefs, load_prefs, append_session, load_sessions
+
+# --- Import AI modules ---
+from ai.autocorrect_hybrid import hybrid_text_suggestions
+from ai.context_ai_correct import safe_context_ai_clean
+
+
+# ---------------- UI Layout ----------------
+st.set_page_config(
+    page_title="AI Data Cleaner",
+    page_icon="🧹",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
 from utils.storage import save_prefs, load_prefs, append_session, load_sessions
 
 st.set_page_config(
@@ -230,15 +116,48 @@ else:
         else:
             st.write("No major numeric outliers detected.")
 
-    with right:
+if "text_cols" not in locals():
+    text_cols =
+df.select_dtypes(include=['object','string']).columns.tolist()
+
+     with right:
         st.subheader("🤖 AI Text Cleanup")
-        enable_context_ai = st.checkbox("✨ Enable Deep Context-Aware Correction (GPT)", value=True)
+
+        enable_context_ai = st.checkbox("✨ Enable Deep Context-Aware Correction (GPT)", value=False)
 
         if st.button("Run Hybrid AI Text Correction"):
             try:
-                df = safe_context_ai_clean(df)
-                st.success("✅ Multilingual AI Text Correction applied successfully!")
+                for col in text_cols:
+                    new_values = []
+                    for val in df[col].astype(str):
+                        # 🌍 Detect language safely
+                        try:
+                            lang = detect(val)
+                        except Exception:
+                            lang = "unknown"
+
+                        # 🧠 Skip non-English texts or numeric-only
+                        if lang != "en" or val.isdigit():
+                            new_values.append(val)
+                            continue
+
+                        # 🧾 Use spaCy to check if it contains named entities (proper nouns)
+                        doc = nlp(val)
+                        if any(ent.label_ in ["PERSON", "GPE", "ORG"] for ent in doc.ents):
+                            new_values.append(val)  # skip name/place/org to protect it
+                            continue
+
+                        # 🚀 Hybrid AI + Context correction
+                        cleaned_val = hybrid_text_suggestions(val)
+                        if enable_context_ai:
+                            cleaned_val = safe_context_ai_clean(pd.DataFrame({col: [cleaned_val]}))[col].iloc[0]
+                        new_values.append(cleaned_val)
+
+                    df[col] = new_values
+
+                st.success("✅ Advanced Hybrid AI Text Correction applied successfully — names & languages protected!")
                 st.dataframe(df.head())
+
             except Exception as e:
                 st.error(f"AI text correction failed: {e}")
 
