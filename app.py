@@ -119,7 +119,7 @@ else:
     if 'text_cols' not in locals():
      text_cols = df.select_dtypes(include=['object', 'string']).columns.tolist()
 
-       with right:
+    with right:
         st.subheader("🤖 AI Text Cleanup")
 
         enable_context_ai = st.checkbox("✨ Enable Deep Context-Aware Correction (GPT)", value=False)
