@@ -1,12 +1,11 @@
-streamlit==1.51.0
+streamlit==1.32.2
 pandas
 numpy
 langdetect
-spacy==3.8.8
+spacy==3.7.4
 textblob
 fuzzywuzzy[speedup]
 python-Levenshtein==0.27.3
 pyspellchecker
 
 
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
