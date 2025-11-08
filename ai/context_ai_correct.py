@@ -1,5 +1,6 @@
 import re
 import os
+import pandas as pd
 from spellchecker import SpellChecker
 from langdetect import detect, DetectorFactory
 from ai.autocorrect_hybrid import hybrid_text_clean
@@ -123,15 +124,16 @@ def gpt_context_correction(text):
     return re.sub(r'\s+', ' ', corrected_text).strip()
 
 
-def safe_context_ai_clean(df):
+def context_ai_correct(df):
     """
     Multilingual, name-aware, context AI cleaning.
     Auto-skips numeric columns and uses hybrid base clean first.
     """
     try:
         for col in df.columns:
-            if str(df[col].dtype) not in ['object', 'string']:
+            if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_datetime64_any_dtype(df[col]):
                 continue
+
             df[col] = df[col].astype(str).fillna("")
             df[col] = df[col].apply(lambda x: gpt_context_correction(hybrid_text_clean(x)))
         return df
