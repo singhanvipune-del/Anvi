@@ -33,7 +33,8 @@ st.set_page_config(page_title="AI Data Cleaning", page_icon="🤖", layout="wide
 st.title("🤖 AI Data Cleaning App")
 st.markdown("Clean messy data using hybrid AI + fuzzy logic 🔥")
 
-uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
+# Allow CSV and Excel upload
+uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx", "xls"])
 
 # ===========================
 # 🔹 Define Fuzzy Clean Function
@@ -51,7 +52,13 @@ def clean_text_with_fuzzy(value, reference_list):
 # 🔹 Main App Logic
 # ===========================
 if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+    # --- Handle CSV or Excel ---
+    file_name = uploaded_file.name.lower()
+    if file_name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+
     st.write("### Original Data:")
     st.dataframe(df.head())
 
@@ -64,7 +71,7 @@ if uploaded_file is not None:
     st.write("**Duplicate rows:**", duplicates)
     st.write("**Numeric outliers:**", outliers)
 
-    # Apply fixes
+    # Apply basic cleaning
     df = fill_missing_values(df)
     df = remove_duplicates(df)
     df = convert_data_types(df)
@@ -77,16 +84,28 @@ if uploaded_file is not None:
         reference_data = df[col].dropna().unique().tolist()
         df[col] = df[col].apply(lambda x: clean_text_with_fuzzy(x, reference_data))
 
+    # 🔹 Optional: Context-based AI correction
+    try:
+        df = safe_context_ai_clean(df)
+    except Exception as e:
+        st.warning(f"⚠️ Context correction skipped: {e}")
+
     st.success("✅ Hybrid AI + Context Correction applied successfully!")
     st.dataframe(df.head())
 
-    # Download cleaned CSV
+    # --- Download cleaned file options ---
     cleaned_csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download Cleaned CSV", cleaned_csv, "cleaned_data.csv", "text/csv")
+    cleaned_excel_path = "cleaned_data.xlsx"
+    df.to_excel(cleaned_excel_path, index=False)
 
+    st.download_button("📥 Download Cleaned CSV", cleaned_csv, "cleaned_data.csv", "text/csv")
+    with open(cleaned_excel_path, "rb") as f:
+        st.download_button("📘 Download Cleaned Excel", f, file_name="cleaned_data.xlsx")
+
+    # --- Save preferences ---
     if st.button("Save my cleaning preferences"):
         save_prefs({"timestamp": str(datetime.datetime.now()), "columns": list(df.columns)})
         st.info("Preferences saved successfully ✅")
 
 else:
-    st.info("👆 Upload a CSV file to get started!")
+    st.info("👆 Upload a CSV or Excel file to get started!")
