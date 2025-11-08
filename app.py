@@ -9,8 +9,20 @@ import os
 from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
 
-import spacy
-nlp = spacy.load("en_core_web_sm")
+from langdetect import detect, DetectorFactory
+from textblob import TextBlob
+
+DetectorFactory.seed = 0
+
+def simple_language_check(text):
+    try:
+        return detect(text)
+    except:
+        return "unknown"
+
+def get_grammar_score(text):
+    blob = TextBlob(text)
+    return round(1 - len(blob.correct().split()) / len(text.split()), 2) if text.strip() else 1
 
 from detection.detect import get_missing_counts, count_duplicates, numeric_outlier_counts
 from fixes.apply_fixes import (
@@ -133,11 +145,7 @@ else:
                             new_values.append(val)
                             continue
 
-                        # 🧾 Use spaCy to check if it contains named entities (proper nouns)
-                        doc = nlp(val)
-                        if any(ent.label_ in ["PERSON", "GPE", "ORG"] for ent in doc.ents):
-                            new_values.append(val)  # skip name/place/org to protect it
-                            continue
+
 
                         # 🚀 Hybrid AI + Context correction
                         cleaned_val = hybrid_text_suggestions(val)

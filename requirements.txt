@@ -1,8 +1,8 @@
-streamlit==1.32.2
+streamlit==1.51.0
 pandas
 numpy
 langdetect
-spacy==3.7.4
+spacy==3.8.8
 textblob
 fuzzywuzzy[speedup]
 python-Levenshtein==0.27.3
