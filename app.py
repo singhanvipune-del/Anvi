@@ -27,6 +27,12 @@ from ai.context_ai_correct import safe_context_ai_clean
 
 from fuzzywuzzy import process
 
+from ai.cleaning import (
+    is_identifier_column,
+    suggest_corrections_for_value,
+    append_changelog
+)
+
 def protect_identifier_columns(df):
     """Ensure identifier columns like Roll No, ID, etc. remain as strings."""
     protected_keywords = ["roll", "id", "number", "code", "reg", "student"]
@@ -108,6 +114,55 @@ if uploaded_file is not None:
 
     st.success("✅ Hybrid AI + Context Correction applied successfully!")
     st.dataframe(df.head())
+
+    # 🚀 Apply intelligent name + typo correction
+    from ai.cleaning import is_identifier_column, suggest_corrections_for_value, append_changelog
+    import os, json
+
+    if st.button("🔧 Clean Data (AI-powered)"):
+        cleaned_df = df.copy()
+        correction_log = []
+
+        for col in cleaned_df.select_dtypes(include='object').columns:
+            if is_identifier_column(cleaned_df, col):
+                continue  # skip roll numbers, IDs, etc.
+
+            new_values = []
+            for val in cleaned_df[col]:
+                corrected, source = suggest_corrections_for_value(val, col_hint=col.lower())
+                if corrected and corrected != val:
+                    new_values.append(corrected)
+                    correction_log.append({
+                        "column": col,
+                        "original": val,
+                        "corrected": corrected,
+                        "method": source
+                    })
+                    append_changelog({
+                        "column": col,
+                        "original": val,
+                        "corrected": corrected,
+                        "method": source
+                    })
+                else:
+                    new_values.append(val)
+
+            cleaned_df[col] = new_values
+
+        st.success("✅ AI-based Name & Spelling Corrections Applied!")
+        st.dataframe(cleaned_df)
+
+        # 📜 Show correction logs
+        if correction_log:
+            st.write("### 🔍 Corrections made:")
+            st.json(correction_log)
+        else:
+            st.info("No corrections were necessary — data already looks clean!")
+
+        # 💾 Allow download
+        cleaned_df.to_excel("cleaned_output.xlsx", index=False)
+        with open("cleaned_output.xlsx", "rb") as f:
+            st.download_button("⬇️ Download Cleaned Excel", f, file_name="cleaned_output.xlsx")
 
     # --- Download cleaned file options ---
     cleaned_csv = df.to_csv(index=False).encode("utf-8")
