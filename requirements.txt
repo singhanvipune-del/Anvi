@@ -6,3 +6,4 @@ langdetect
 fuzzywuzzy
 python-Levenshtein
 openpyxl
+Unidecode
