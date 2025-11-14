@@ -1,183 +1,81 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import datetime
 import json
-import os
 
-# 🌐 Language and NLP setup
-from langdetect import detect, DetectorFactory
-DetectorFactory.seed = 0
+# ---- Import your cleaning logic ----
+from cleaning import clean_record
 
-# --- Import helper modules ---
-from detection.detect import get_missing_counts, count_duplicates, numeric_outlier_counts
-from fixes.apply_fixes import (
-    fill_missing_values,
-    remove_duplicates,
-    convert_data_types,
-    normalize_text_case,
-    apply_auto_corrections,
-    fuzzy_dedupe_by_column
-)
-from utils.storage import save_prefs, load_prefs, append_session, load_sessions
-
-# --- Import AI modules ---
-from ai.autocorrect_hybrid import hybrid_text_suggestions
-from ai.context_ai_correct import safe_context_ai_clean
-
-from fuzzywuzzy import process
-
-from ai.cleaning import (
-    is_identifier_column,
-    suggest_corrections_for_value,
-    append_changelog
-)
-
-def protect_identifier_columns(df):
-    """Ensure identifier columns like Roll No, ID, etc. remain as strings."""
-    protected_keywords = ["roll", "id", "number", "code", "reg", "student"]
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in protected_keywords):
-            df[col] = df[col].astype(str)
-    return df
-
-# ✅ Initialize Streamlit
-st.set_page_config(page_title="AI Data Cleaning", page_icon="🤖", layout="wide")
-
-st.title("🤖 AI Data Cleaning App")
-st.markdown("Clean messy data using hybrid AI + fuzzy logic 🔥")
-
-# Allow CSV and Excel upload
-uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx", "xls"])
-
-# ===========================
-# 🔹 Define Fuzzy Clean Function
-# ===========================
-def clean_text_with_fuzzy(value, reference_list):
+# ---- Load master data (cities, countries) ----
+@st.cache_data
+def load_city_list():
     try:
-        best_match = process.extractOne(str(value), reference_list)
-        if best_match and best_match[1] > 80:  # similarity threshold
-            return best_match[0].title()  # capitalize clean names
-        return str(value).title()
+        df = pd.read_csv("world_cities.csv")
+        return df["city"].dropna().unique().tolist()
     except:
-        return str(value).title()
+        return []
 
-# ===========================
-# 🔹 Main App Logic
-# ===========================
+@st.cache_data
+def load_country_list():
+    try:
+        df = pd.read_csv("countries.csv")
+        return df["country"].dropna().unique().tolist()
+    except:
+        return []
+
+city_list = load_city_list()
+country_list = load_country_list()
+
+
+# -----------------------------------------------------
+#                   STREAMLIT UI
+# -----------------------------------------------------
+st.set_page_config(page_title="AI Data Cleaning", page_icon="🤖", layout="wide")
+st.title("🤖 AI Data Cleaning App")
+st.markdown("Upload your file and get perfectly cleaned data using AI-enhanced rules.")
+
+uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+
+
 if uploaded_file is not None:
-    # --- Handle CSV or Excel ---
-    file_name = uploaded_file.name.lower()
-    if file_name.endswith(".csv"):
+
+    # --- Read file ---
+    if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file, dtype=str)
     else:
         df = pd.read_excel(uploaded_file, dtype=str)
 
-    # 🔒 Protect important columns
-    df = protect_identifier_columns(df)
-
-    st.write("### Original Data:")
+    st.write("### 📌 Original Data (top rows)")
     st.dataframe(df.head())
 
-    # Run detections
-    missing = get_missing_counts(df)
-    duplicates = count_duplicates(df)
-    outliers = numeric_outlier_counts(df)
+    # ---- CLEAN THE DATA ----
+    cleaned_rows = []
 
-    st.write("**Missing values:**", missing)
-    st.write("**Duplicate rows:**", duplicates)
-    st.write("**Numeric outliers:**", outliers)
+    for _, row in df.iterrows():
+        cleaned_row = clean_record(row.to_dict(), city_list, country_list)
+        cleaned_rows.append(cleaned_row)
 
-    # Apply basic cleaning
-    df = fill_missing_values(df)
-    df = remove_duplicates(df)
-    df = convert_data_types(df)
-    df = normalize_text_case(df)
+    cleaned_df = pd.DataFrame(cleaned_rows)
 
-    st.success("✅ Basic cleaning complete!")
+    st.success("✅ Data cleaned successfully!")
+    st.write("### 🧹 Cleaned Data Preview")
+    st.dataframe(cleaned_df.head())
 
-    if st.button("🔄 Apply AI + Fuzzy Name Correction"):
-        df = safe_context_ai_clean(df)
-        st.success("✅ AI corrections applied successfully!")
-        st.dataframe(df.head())
+    # ---- DOWNLOAD OPTIONS ----
+    cleaned_csv = cleaned_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "📥 Download Cleaned CSV",
+        cleaned_csv,
+        "cleaned_data.csv",
+        "text/csv"
+    )
 
-    # 🔹 Apply Fuzzy + AI Correction
-    for col in df.select_dtypes(include="object").columns:
-        if is_identifier_column(df, col):
-            continue
-        df[col] = df[col].apply(lambda x: suggest_corrections_for_value(x, col)[0] or x)
-
-    # 🔹 Optional: Context-based AI correction
-    try:
-        df = safe_context_ai_clean(df)
-    except Exception as e:
-        st.warning(f"⚠️ Context correction skipped: {e}")
-
-    st.success("✅ Hybrid AI + Context Correction applied successfully!")
-    st.dataframe(df.head())
-
-    # 🚀 Apply intelligent name + typo correction
-    from ai.cleaning import is_identifier_column, suggest_corrections_for_value, append_changelog
-    import os, json
-
-    if st.button("🔧 Clean Data (AI-powered)"):
-        cleaned_df = df.copy()
-        correction_log = []
-
-        for col in cleaned_df.select_dtypes(include='object').columns:
-            if is_identifier_column(cleaned_df, col):
-                continue  # skip roll numbers, IDs, etc.
-
-            new_values = []
-            for val in cleaned_df[col]:
-                corrected, source = suggest_corrections_for_value(val, col_hint=col.lower())
-                if corrected and corrected != val:
-                    new_values.append(corrected)
-                    correction_log.append({
-                        "column": col,
-                        "original": val,
-                        "corrected": corrected,
-                        "method": source
-                    })
-                    append_changelog({
-                        "column": col,
-                        "original": val,
-                        "corrected": corrected,
-                        "method": source
-                    })
-                else:
-                    new_values.append(val)
-
-            cleaned_df[col] = new_values
-
-        st.success("✅ AI-based Name & Spelling Corrections Applied!")
-        st.dataframe(cleaned_df)
-
-        # 📜 Show correction logs
-        if correction_log:
-            st.write("### 🔍 Corrections made:")
-            st.json(correction_log)
-        else:
-            st.info("No corrections were necessary — data already looks clean!")
-
-        # 💾 Allow download
-        cleaned_df.to_excel("cleaned_output.xlsx", index=False)
-        with open("cleaned_output.xlsx", "rb") as f:
-            st.download_button("⬇️ Download Cleaned Excel", f, file_name="cleaned_output.xlsx")
-
-    # --- Download cleaned file options ---
-    cleaned_csv = df.to_csv(index=False).encode("utf-8")
-    cleaned_excel_path = "cleaned_data.xlsx"
-    df.to_excel(cleaned_excel_path, index=False)
-
-    st.download_button("📥 Download Cleaned CSV", cleaned_csv, "cleaned_data.csv", "text/csv")
-    with open(cleaned_excel_path, "rb") as f:
-        st.download_button("📘 Download Cleaned Excel", f, file_name="cleaned_data.xlsx")
-
-    # --- Save preferences ---
-    if st.button("Save my cleaning preferences"):
-        save_prefs({"timestamp": str(datetime.datetime.now()), "columns": list(df.columns)})
-        st.info("Preferences saved successfully ✅")
+    cleaned_df.to_excel("cleaned_data.xlsx", index=False)
+    with open("cleaned_data.xlsx", "rb") as f:
+        st.download_button(
+            "📘 Download Cleaned Excel",
+            f,
+            file_name="cleaned_data.xlsx"
+        )
 
 else:
-    st.info("👆 Upload a CSV or Excel file to get started!")
+    st.info("👆 Upload a CSV or Excel file to begin.")
