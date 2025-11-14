@@ -102,9 +102,10 @@ if uploaded_file is not None:
         st.dataframe(df.head())
 
     # 🔹 Apply Fuzzy + AI Correction
-    for col in df.select_dtypes(include='object').columns:
-        reference_data = df[col].dropna().unique().tolist()
-        df[col] = df[col].apply(lambda x: clean_text_with_fuzzy(x, reference_data))
+    for col in df.select_dtypes(include="object").columns:
+        if is_identifier_column(df, col):
+            continue
+        df[col] = df[col].apply(lambda x: suggest_corrections_for_value(x, col)[0] or x)
 
     # 🔹 Optional: Context-based AI correction
     try:
