@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-# Import the real function you have
-from cleaning import clean_record
-
+from apply_fixes import (
+    clean_record,
+    fill_missing_values,
+    remove_duplicates,
+    convert_data_types,
+    normalize_text_case
+)
 
 # Load city & country lists
 @st.cache_data
@@ -23,18 +27,15 @@ def load_country_list():
     except:
         return []
 
-
 city_list = load_city_list()
 country_list = load_country_list()
 
 
-# -----------------------------------------
 # Streamlit UI
-# -----------------------------------------
 st.set_page_config(page_title="AI Data Cleaning", page_icon="🧹", layout="wide")
 
 st.title("🧹 AI Data Cleaning App")
-st.write("Upload your dataset and get AI-based name & spelling corrections instantly!")
+st.write("Upload your dataset and get AI-based corrections instantly!")
 
 
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
