@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-from apply_fixes import (
+from fixes.apply_fixes import (
     clean_record,
     fill_missing_values,
     remove_duplicates,
@@ -10,11 +10,12 @@ from apply_fixes import (
     normalize_text_case
 )
 
+
 # Load city & country lists
 @st.cache_data
 def load_city_list():
     try:
-        df = pd.read_csv("world_cities.csv")
+        df = pd.read_csv("data/world_cities.csv")
         return df["city"].dropna().unique().tolist()
     except:
         return []
@@ -22,7 +23,7 @@ def load_city_list():
 @st.cache_data
 def load_country_list():
     try:
-        df = pd.read_csv("countries.csv")
+        df = pd.read_csv("data/countries.csv")
         return df["country"].dropna().unique().tolist()
     except:
         return []
