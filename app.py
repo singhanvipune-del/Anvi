@@ -1,36 +1,50 @@
 import pandas as pd
+import streamlit as st
+
 from ai.autocorrect_hybrid import autocorrect_name
 from ai.cleaning import clean_data, remove_duplicates
 from detection.detect import detect_duplicates
 from fixes.apply_fixes import apply_corrections
 from utils.save_log import save_log
-from utils.storage import save_file
 from utils.suggest_improvements import suggest_improvements
 
 
+# ---------------------------
+# Load File (Streamlit friendly)
+# ---------------------------
+def load_file(uploaded_file):
+    if uploaded_file is None:
+        raise ValueError("No file uploaded")
 
-def load_file(file_path):
-    if file_path.endswith(".csv"):
-        return pd.read_csv(file_path)
+    if uploaded_file.name.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
 
-    elif file_path.endswith(".xlsx"):
-        return pd.read_excel(file_path)
+    elif uploaded_file.name.endswith(".xlsx"):
+        return pd.read_excel(uploaded_file)
 
     else:
-        raise ValueError("Unsupported file format. Use CSV or Excel.")
+        raise ValueError("Unsupported file format. Upload CSV or Excel.")
 
 
+# ---------------------------
+# Fix names
+# ---------------------------
 def correct_names(df):
     for col in df.columns:
-        if df[col].dtype == "object":  # only fix text columns
-            df[col] = df[col].apply(lambda x: autocorrect_name(x) if isinstance(x, str) else x)
+        if df[col].dtype == "object":
+            df[col] = df[col].apply(
+                lambda x: autocorrect_name(x) if isinstance(x, str) else x
+            )
     return df
 
 
-def process_file(file_path):
+# ---------------------------
+# Main Processing Function
+# ---------------------------
+def process_file(uploaded_file):
     save_log("Starting processing...")
 
-    df = load_file(file_path)
+    df = load_file(uploaded_file)
     save_log("File loaded successfully.")
 
     before_df = df.copy()
@@ -44,7 +58,7 @@ def process_file(file_path):
     df = clean_data(df)
     save_log("Cleaned data & removed duplicates.")
 
-    # STEP 3: Autocorrect names (people, cities, countries, products etc)
+    # STEP 3: Autocorrect names
     df = correct_names(df)
     save_log("Name corrections applied.")
 
@@ -52,7 +66,7 @@ def process_file(file_path):
     df = apply_corrections(df)
     save_log("Context-based corrections applied.")
 
-    # STEP 5: Suggest improvements
+    # STEP 5: Suggestions
     suggestions = suggest_improvements(df)
     save_log("Generated suggestions.")
 
@@ -61,20 +75,30 @@ def process_file(file_path):
     return before_df, after_df, suggestions
 
 
-import streamlit as st
+# ---------------------------
+# Streamlit App UI
+# ---------------------------
+def main():
+    st.title("AI Data Cleaning App")
+    st.write("Upload your CSV or Excel file to clean it automatically.")
 
-st.title("AI Data Cleaning App")
+    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
-uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv","xlsx"])
+    if uploaded_file:
+        st.success("File uploaded successfully!")
 
-if uploaded_file is not None:
-    before, after, suggestions = process_file(uploaded_file)
+        before, after, suggestions = process_file(uploaded_file)
 
-    st.subheader("Before Cleaning")
-    st.dataframe(before)
+        st.subheader("Before Cleaning")
+        st.dataframe(before)
 
-    st.subheader("After Cleaning")
-    st.dataframe(after)
+        st.subheader("After Cleaning")
+        st.dataframe(after)
 
-    st.subheader("Suggestions")
-    st.write(suggestions)
+        st.subheader("Suggestions")
+        st.write(suggestions)
+
+
+# Run Streamlit app
+if __name__ == "__main__":
+    main()
