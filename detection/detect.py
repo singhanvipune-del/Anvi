@@ -1,32 +1,28 @@
+# detect.py
 import pandas as pd
-import numpy as np
 
-def get_missing_counts(df: pd.DataFrame) -> pd.Series:
-    return df.isnull().sum()
+def detect_duplicates(df: pd.DataFrame):
+    """
+    Detect duplicate rows and duplicate values in columns.
+    Returns a dictionary with details.
+    """
+    duplicates = {
+        "duplicate_rows": df[df.duplicated()].index.tolist(),
+        "duplicate_columns": [],
+        "duplicate_values": {}
+    }
 
-def count_duplicates(df: pd.DataFrame) -> int:
-    return int(df.duplicated().sum())
+    # Check duplicate columns (same data)
+    for col1 in df.columns:
+        for col2 in df.columns:
+            if col1 != col2 and df[col1].equals(df[col2]):
+                duplicates["duplicate_columns"].append((col1, col2))
 
-def numeric_outlier_counts(df: pd.DataFrame, z_thresh=3) -> dict:
-    nums = df.select_dtypes(include=np.number)
-    out = {}
-    for col in nums.columns:
-        col_series = nums[col].dropna()
-        mean = col_series.mean()
-        std = col_series.std()
-        if std == 0 or np.isnan(std):
-            continue
-        mask = (col_series > mean + z_thresh*std) | (col_series < mean - z_thresh*std)
-        ct = int(mask.sum())
-        if ct > 0:
-            out[col] = ct
-    return out
-
-def detect_type_issues(df: pd.DataFrame, sample_size=100) -> dict:
-    issues = {}
+    # Check duplicate values inside each column
     for col in df.columns:
-        try:
-            pd.to_numeric(df[col].dropna().sample(min(sample_size, df.shape[0])))
-        except Exception:
-            issues[col] = "contains non-numeric values"
-    return issues
+        if df[col].dtype == "object":
+            dup_vals = df[df[col].duplicated()][col].unique().tolist()
+            if dup_vals:
+                duplicates["duplicate_values"][col] = dup_vals
+
+    return duplicates

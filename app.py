@@ -1,82 +1,76 @@
-import streamlit as st
 import pandas as pd
-from io import BytesIO
-
-from fixes.apply_fixes import (
-    clean_record,
-    fill_missing_values,
-    remove_duplicates,
-    convert_data_types,
-    normalize_text_case
-)
+from ai.autocorrect_hybrid import autocorrect_name
+from ai.cleaning import clean_data, remove_duplicates
+from detection.detect import detect_duplicates
+from fixes.apply_fixes import apply_corrections
+from utils.save_log import save_log
+from utils.storage import save_file
+from utils.suggest_improvements import suggest_improvements
 
 
-# Load city & country lists
-@st.cache_data
-def load_city_list():
-    try:
-        df = pd.read_csv("data/world_cities.csv")
-        return df["city"].dropna().unique().tolist()
-    except:
-        return []
 
-@st.cache_data
-def load_country_list():
-    try:
-        df = pd.read_csv("data/countries.csv")
-        return df["country"].dropna().unique().tolist()
-    except:
-        return []
+def load_file(file_path):
+    if file_path.endswith(".csv"):
+        return pd.read_csv(file_path)
 
-city_list = load_city_list()
-country_list = load_country_list()
+    elif file_path.endswith(".xlsx"):
+        return pd.read_excel(file_path)
+
+    else:
+        raise ValueError("Unsupported file format. Use CSV or Excel.")
 
 
-# Streamlit UI
-st.set_page_config(page_title="AI Data Cleaning", page_icon="🧹", layout="wide")
+def correct_names(df):
+    for col in df.columns:
+        if df[col].dtype == "object":  # only fix text columns
+            df[col] = df[col].apply(lambda x: autocorrect_name(x) if isinstance(x, str) else x)
+    return df
 
-st.title("🧹 AI Data Cleaning App")
-st.write("Upload your dataset and get AI-based corrections instantly!")
+
+def process_file(file_path):
+    save_log("Starting processing...")
+
+    df = load_file(file_path)
+    save_log("File loaded successfully.")
+
+    before_df = df.copy()
+
+    # STEP 1: Detect duplicates
+    duplicate_info = detect_duplicates(df)
+    save_log(f"Found duplicates: {duplicate_info}")
+
+    # STEP 2: Clean & remove duplicates
+    df = remove_duplicates(df)
+    df = clean_data(df)
+    save_log("Cleaned data & removed duplicates.")
+
+    # STEP 3: Autocorrect names (people, cities, countries, products etc)
+    df = correct_names(df)
+    save_log("Name corrections applied.")
+
+    # STEP 4: Apply contextual fixes
+    df = apply_corrections(df)
+    save_log("Context-based corrections applied.")
+
+    # STEP 5: Suggest improvements
+    suggestions = suggest_improvements(df)
+    save_log("Generated suggestions.")
+
+    after_df = df.copy()
+
+    return before_df, after_df, suggestions
 
 
-uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+if __name__ == "__main__":
+    file_path = input("Enter the CSV/Excel file path: ")
 
-if uploaded_file:
-    try:
-        # Read file
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file, dtype=str)
-        else:
-            df = pd.read_excel(uploaded_file, dtype=str)
+    before, after, suggestions = process_file(file_path)
 
-        st.success("📁 File uploaded successfully!")
-        st.subheader("🔍 Original Data Preview")
-        st.dataframe(df.head())
+    print("\n--- BEFORE CLEANING ---")
+    print(before)
 
-        # Clean record-by-record
-        cleaned_rows = []
-        for _, row in df.iterrows():
-            cleaned_rows.append(clean_record(row.to_dict(), city_list, country_list))
+    print("\n--- AFTER CLEANING ---")
+    print(after)
 
-        cleaned_df = pd.DataFrame(cleaned_rows)
-
-        st.subheader("✨ Cleaned Data Preview")
-        st.dataframe(cleaned_df.head())
-
-        # Download cleaned CSV
-        csv_data = cleaned_df.to_csv(index=False).encode()
-        st.download_button("📥 Download Cleaned CSV", csv_data, "cleaned_data.csv")
-
-        # Download cleaned Excel
-        excel_buffer = BytesIO()
-        cleaned_df.to_excel(excel_buffer, index=False, engine="openpyxl")
-        excel_buffer.seek(0)
-
-        st.download_button(
-            "📘 Download Cleaned Excel",
-            excel_buffer,
-            file_name="cleaned_data.xlsx"
-        )
-
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
+    print("\n--- SUGGESTIONS ---")
+    print(suggestions)

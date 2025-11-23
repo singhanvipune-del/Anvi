@@ -1,13 +1,3 @@
 streamlit
 pandas
-rapidfuzz
-pyspellchecker==0.7.2
-langdetect
-fuzzywuzzy
-python-Levenshtein
-openpyxl
-Unidecode
-spacy
-gender-guesser
-nameparser
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+numpy
