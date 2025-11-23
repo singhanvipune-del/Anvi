@@ -61,16 +61,20 @@ def process_file(file_path):
     return before_df, after_df, suggestions
 
 
-if __name__ == "__main__":
-    file_path = input("Enter the CSV/Excel file path: ")
+import streamlit as st
 
-    before, after, suggestions = process_file(file_path)
+st.title("AI Data Cleaning App")
 
-    print("\n--- BEFORE CLEANING ---")
-    print(before)
+uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv","xlsx"])
 
-    print("\n--- AFTER CLEANING ---")
-    print(after)
+if uploaded_file is not None:
+    before, after, suggestions = process_file(uploaded_file)
 
-    print("\n--- SUGGESTIONS ---")
-    print(suggestions)
+    st.subheader("Before Cleaning")
+    st.dataframe(before)
+
+    st.subheader("After Cleaning")
+    st.dataframe(after)
+
+    st.subheader("Suggestions")
+    st.write(suggestions)
