@@ -1,5 +1,7 @@
-# utils/suggest_improvements.py
-from suggestions.suggest import suggest_improvements as _s
-
-def suggest_improvements(df):
-    return _s(df)
+def advanced_improvements(df):
+    improvements = []
+    if df.shape[1] > 20:
+        improvements.append("Dataset very wide: consider dimensionality reduction.")
+    if df.shape[0] > 500000:
+        improvements.append("Large dataset: consider chunk processing for performance.")
+    return improvements
