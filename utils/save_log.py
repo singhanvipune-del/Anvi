@@ -1,12 +1,15 @@
+# utils/save_log.py
 import os
 from datetime import datetime
 
-LOG_FILE = os.path.join("logs", "app.log")
+LOG_DIR = "logs"
+LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
-def save_log(message: str):
-    """Save log messages to logs/app.log with timestamp."""
-    os.makedirs("logs", exist_ok=True)
+def ensure_log_dir():
+    os.makedirs(LOG_DIR, exist_ok=True)
 
+def save_log(msg: str):
+    ensure_log_dir()
+    ts = datetime.utcnow().isoformat(timespec="seconds")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        f.write(f"[{timestamp}] {message}\n")
+        f.write(f"{ts} - {msg}\n")

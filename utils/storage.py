@@ -1,10 +1,8 @@
-import pandas as pd
+# utils/storage.py
+import os
 
-def save_file(df: pd.DataFrame, output_path: str):
-    """Save cleaned dataframe as CSV or Excel."""
-    if output_path.endswith(".csv"):
-        df.to_csv(output_path, index=False)
-    elif output_path.endswith(".xlsx"):
-        df.to_excel(output_path, index=False)
-    else:
-        raise ValueError("Unsupported file format. Use CSV or Excel.")
+def save_file_bytes(file_bytes, dest_path):
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    with open(dest_path, "wb") as f:
+        f.write(file_bytes)
+    return dest_path
