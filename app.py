@@ -62,7 +62,7 @@ def download_button_for_df(df: pd.DataFrame, filename: str = "cleaned_data.csv")
 # Streamlit UI
 # ---------------------------
 st.set_page_config(page_title="AI Data Cleaner", layout="wide")
-st.title("🧹 AI Data Cleaner — PyCharm / Streamlit Ready")
+st.title("🧹 AI Data Cleaner ")
 st.write("Upload CSV/XLSX, preview, run cleaning, see suggestions, detect fuzzy duplicates, and download results.")
 
 col1, col2 = st.columns([3, 1])
