@@ -1,6 +1,6 @@
 import pandas as pd
 
-def apply_basic_fixes(df):
+def apply_fixes (df):
     df = df.copy()
 
     # Convert all columns to string safely

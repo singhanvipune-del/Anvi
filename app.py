@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
-from fixes.apply_fixes import apply_basic_fixes
+from fixes.apply_fixes import apply_fixes
 from detection.detect import fuzzy_duplicate_pairs
 from utils.save_log import save_log
 
@@ -58,7 +58,7 @@ corrections_input = st.text_area(
 # button actions
 if run_clean:
     with st.spinner("Running cleaning pipeline..."):
-        cleaned_df = apply_basic_fixes(df_raw)
+        cleaned_df = apply_fixes(df_raw)
         st.success("Cleaning complete")
         st.dataframe(cleaned_df.head(200))
         download_button_for_df(cleaned_df, filename="cleaned_data.csv")
