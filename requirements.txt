@@ -9,3 +9,5 @@ nltk
 joblib
 types-pytz
 openpyxl
+thefuzz
+python-levenshtein
