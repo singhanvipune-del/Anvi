@@ -11,3 +11,4 @@ types-pytz
 openpyxl
 thefuzz
 python-levenshtein
+types-pytz
