@@ -5,7 +5,6 @@ from fixes.apply_fixes import apply_fixes
 from detection.detect import fuzzy_duplicate_pairs
 from utils.save_log import save_log
 
-
 # --------------------------
 # Helper functions
 # --------------------------
@@ -51,8 +50,10 @@ if uploaded_file is not None:
             with st.spinner("Running AI-powered cleaning..."):
                 try:
                     result = apply_fixes(df_raw)
-                    cleaned_df = result['cleaned_df']
-                    dup_df_internal = result['duplicates_df']
+
+                    cleaned_df = result["cleaned_df"]
+                    duplicates_df = result["duplicates_df"]
+                    log = result["log"]
 
                     st.success("AI Cleaning Complete!")
                     st.subheader("Cleaned Data (First 200 Rows)")
@@ -60,9 +61,9 @@ if uploaded_file is not None:
 
                     download_button_for_df(cleaned_df, filename="cleaned_data.csv")
 
-                    if not dup_df_internal.empty:
+                    if not duplicates_df.empty:
                         st.subheader("Possible Internal Duplicate Entries")
-                        st.dataframe(dup_df_internal.head(200))
+                        st.dataframe(duplicates_df.head(200))
 
                 except Exception as e:
                     st.error(f"Error during cleaning: {e}")
@@ -83,5 +84,6 @@ if uploaded_file is not None:
 
                 except Exception as e:
                     st.error(f"Fuzzy detection error: {e}")
+
 else:
     st.warning("Upload a file to begin.")
