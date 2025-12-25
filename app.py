@@ -4,7 +4,8 @@ from io import BytesIO
 from openai import OpenAI
 
 # ==================== 🧠 OpenAI Setup ====================
-client = OpenAI()
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+
 
 def correct_entity_openai(value: str, column_name: str = ""):
     """Use GPT to correct names, cities, or countries intelligently."""
