@@ -6,6 +6,15 @@ from openai import OpenAI
 # ==================== 🧠 OpenAI Setup ====================
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
+st.write("🔑 Testing OpenAI API...")
+
+try:
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+    response = client.responses.create(model="gpt-4o-mini", input="Hello!")
+    st.success("✅ OpenAI API key works fine!")
+except Exception as e:
+    st.error(f"❌ OpenAI API test failed: {e}")
+
 
 def correct_entity_openai(value: str, column_name: str = ""):
     """Use GPT to correct names, cities, or countries intelligently."""
