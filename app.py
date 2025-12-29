@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from openai import OpenAI
+import time
 
 # ==================== 🧠 OpenAI Setup ====================
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -9,13 +10,13 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 st.write("🔑 Testing OpenAI API...")
 
 try:
-    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
     response = client.responses.create(model="gpt-4o-mini", input="Hello!")
     st.success("✅ OpenAI API key works fine!")
 except Exception as e:
     st.error(f"❌ OpenAI API test failed: {e}")
 
 
+# ==================== ⚙️ AI Correction Function ====================
 def correct_entity_openai(value: str, column_name: str = ""):
     """Use GPT to correct names, cities, or countries intelligently."""
     if not isinstance(value, str) or not value.strip():
@@ -34,7 +35,7 @@ Now correct this:
 "{value}"
 """
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # use "gpt-3.5-turbo" for cheaper option
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=20,
             temperature=0
@@ -87,30 +88,46 @@ if uploaded_file:
 
     if st.button("✨ Clean & Correct Data"):
         progress = st.progress(0)
+        status_text = st.empty()
         with st.spinner("AI is cleaning your data... ⏳"):
 
             # Step 1️⃣ Normalize Data
-            progress.progress(20)
+            progress.progress(10)
+            status_text.text("🔧 Preprocessing data...")
             df.columns = df.columns.str.lower().str.strip()
             df = df.applymap(lambda x: x.strip().title() if isinstance(x, str) else x)
             df = df.drop_duplicates()
 
-            # Step 2️⃣ AI Correction across all text columns
-            progress.progress(60)
-            cache = {}
+            # Step 2️⃣ AI Correction (Batch-wise)
             text_columns = df.select_dtypes(include=["object"]).columns
+            total_batches = len(df)
+            cache = {}
+            batch_size = 30  # process 30 rows at a time for speed balance
 
             for col in text_columns:
                 st.write(f"🧹 Cleaning column: {col}")
-                df[col] = df[col].apply(
-                    lambda x: cache.setdefault(
-                        (col, str(x).strip().lower()),
-                        correct_entity_openai(x, col)
-                    )
-                )
+                cleaned_values = []
+                for i in range(0, len(df), batch_size):
+                    batch = df.iloc[i:i+batch_size]
+                    corrected_batch = []
+
+                    for val in batch[col]:
+                        key = (col, str(val).strip().lower())
+                        if key not in cache:
+                            cache[key] = correct_entity_openai(val, col)
+                        corrected_batch.append(cache[key])
+
+                    cleaned_values.extend(corrected_batch)
+                    # update progress dynamically
+                    current_progress = int(((i + batch_size) / total_batches) * 100)
+                    progress.progress(min(current_progress, 95))
+                    status_text.text(f"✨ Cleaning {col}: {min(current_progress, 95)}% complete...")
+                    time.sleep(0.1)
+
+                df[col] = cleaned_values
 
             # Step 3️⃣ Finalize
-            progress.progress(90)
+            progress.progress(100)
             st.success("✅ AI Cleaning Complete!")
             st.balloons()
 
@@ -118,7 +135,6 @@ if uploaded_file:
             st.dataframe(df.head(), use_container_width=True)
 
             # Step 4️⃣ Downloads
-            progress.progress(100)
             csv_data = df.to_csv(index=False).encode("utf-8")
             excel_buffer = BytesIO()
             with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
