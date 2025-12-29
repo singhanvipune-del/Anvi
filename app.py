@@ -86,68 +86,69 @@ if uploaded_file:
     st.write("### 🧾 Original Data Preview")
     st.dataframe(df.head(), use_container_width=True)
 
-    if st.button("✨ Clean & Correct Data"):
-        progress = st.progress(0)
-        status_text = st.empty()
-        with st.spinner("AI is cleaning your data... ⏳"):
+import concurrent.futures
 
-            # Step 1️⃣ Normalize Data
-            progress.progress(10)
-            status_text.text("🔧 Preprocessing data...")
-            df.columns = df.columns.str.lower().str.strip()
-            df = df.applymap(lambda x: x.strip().title() if isinstance(x, str) else x)
-            df = df.drop_duplicates()
+if st.button("✨ Clean & Correct Data"):
+    progress = st.progress(0)
+    status_text = st.empty()
+    with st.spinner("AI is cleaning your data... ⏳"):
 
-            # Step 2️⃣ AI Correction (Batch-wise)
-            text_columns = df.select_dtypes(include=["object"]).columns
-            total_batches = len(df)
-            cache = {}
-            batch_size = 30  # process 30 rows at a time for speed balance
+        # Step 1️⃣ Normalize Data
+        progress.progress(10)
+        status_text.text("🔧 Preprocessing data...")
+        df.columns = df.columns.str.lower().str.strip()
+        df = df.applymap(lambda x: x.strip().title() if isinstance(x, str) else x)
+        df = df.drop_duplicates()
 
-            for col in text_columns:
-                st.write(f"🧹 Cleaning column: {col}")
+        # Step 2️⃣ Parallel AI Correction
+        text_columns = df.select_dtypes(include=["object"]).columns
+        total_cells = len(df) * len(text_columns)
+        done = 0
+        cache = {}
+
+
+        def process_value(val, col):
+            key = (col, str(val).strip().lower())
+            if key not in cache:
+                cache[key] = correct_entity_openai(val, col)
+            return cache[key]
+
+
+        for col in text_columns:
+            st.write(f"🧹 Cleaning column: {col}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(process_value, val, col): i for i, val in enumerate(df[col])}
                 cleaned_values = []
-                for i in range(0, len(df), batch_size):
-                    batch = df.iloc[i:i+batch_size]
-                    corrected_batch = []
+                for future in concurrent.futures.as_completed(futures):
+                    cleaned_values.append(future.result())
+                    done += 1
+                    if done % 10 == 0:
+                        progress.progress(min(95, int((done / total_cells) * 100)))
+                        status_text.text(f"✨ Cleaning {col}: {min(95, int((done / total_cells) * 100))}% complete...")
+            df[col] = cleaned_values
 
-                    for val in batch[col]:
-                        key = (col, str(val).strip().lower())
-                        if key not in cache:
-                            cache[key] = correct_entity_openai(val, col)
-                        corrected_batch.append(cache[key])
+        # Step 3️⃣ Finalize
+        progress.progress(100)
+        st.success("✅ AI Cleaning Complete!")
+        st.balloons()
 
-                    cleaned_values.extend(corrected_batch)
-                    # update progress dynamically
-                    current_progress = int(((i + batch_size) / total_batches) * 100)
-                    progress.progress(min(current_progress, 95))
-                    status_text.text(f"✨ Cleaning {col}: {min(current_progress, 95)}% complete...")
-                    time.sleep(0.1)
+        st.write("### 🧼 Cleaned Data Preview")
+        st.dataframe(df.head(), use_container_width=True)
 
-                df[col] = cleaned_values
+        # Step 4️⃣ Downloads
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        excel_buffer = BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="CleanedData")
+        excel_data = excel_buffer.getvalue()
 
-            # Step 3️⃣ Finalize
-            progress.progress(100)
-            st.success("✅ AI Cleaning Complete!")
-            st.balloons()
-
-            st.write("### 🧼 Cleaned Data Preview")
-            st.dataframe(df.head(), use_container_width=True)
-
-            # Step 4️⃣ Downloads
-            csv_data = df.to_csv(index=False).encode("utf-8")
-            excel_buffer = BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-                df.to_excel(writer, index=False, sheet_name="CleanedData")
-            excel_data = excel_buffer.getvalue()
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button("⬇️ Download CSV", csv_data, "cleaned_data.csv", "text/csv")
-            with col2:
-                st.download_button(
-                    "📊 Download Excel",
-                    excel_data,
-                    "cleaned_data.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button("⬇️ Download CSV", csv_data, "cleaned_data.csv", "text/csv")
+        with col2:
+            st.download_button(
+                "📊 Download Excel",
+                excel_data,
+                "cleaned_data.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
