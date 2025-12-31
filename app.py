@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 from openai import OpenAI
 import concurrent.futures
+import re
 import tiktoken  # for accurate token estimation
 
 # ==================== 🧠 OpenAI Setup ====================
@@ -20,11 +21,40 @@ def estimate_tokens(text):
     return len(enc.encode(text))
 
 
-# ==================== 🧹 Column Name Correction ====================
+# ==================== ⚙️ Local Header Cleaning ====================
+def locally_clean_header(name: str):
+    """Perform fast local cleaning before using GPT."""
+    if not isinstance(name, str):
+        return name
+    name = name.strip().lower()
+    name = re.sub(r'[_\-]+', ' ', name)  # replace _ or - with space
+    name = re.sub(r'\s+', ' ', name)  # remove double spaces
+    name = name.replace('.', '').strip()
+    common_corrections = {
+        "fname": "first name",
+        "lname": "last name",
+        "phn": "phone",
+        "phn no": "phone number",
+        "rollno": "roll no",
+        "rool no": "roll no",
+        "empname": "employee name",
+        "emp id": "employee id",
+        "counntry": "country"
+    }
+    return common_corrections.get(name, name)
+
+
+# ==================== 🧠 GPT Header Correction ====================
 def correct_column_name(name: str):
-    """Use GPT to intelligently correct misspelled or inconsistent column names."""
+    """Use GPT only if local cleaning didn't fix it."""
     if not isinstance(name, str) or not name.strip():
         return name
+    local = locally_clean_header(name)
+
+    # Skip GPT if the cleaned version is short and contains only letters/spaces
+    if re.match(r'^[a-z ]+$', local) and len(local) > 2:
+        return local
+
     try:
         prompt = f"""
 You are a data cleaning assistant. Correct any spelling, spacing, or casing mistakes in this column name.
@@ -45,10 +75,10 @@ Now correct this:
             max_tokens=10,
             temperature=0
         )
-        return response.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip().lower()
     except Exception as e:
         print("⚠️ Column correction error:", e)
-        return name
+        return local
 
 
 # ==================== 🧹 AI Cell Correction ====================
@@ -120,16 +150,20 @@ if uploaded_file:
         progress = st.progress(0)
         with st.spinner("AI is cleaning your data... ⏳"):
 
-            # Step 1️⃣ Correct Column Headers
+            # Step 1️⃣ — Correct Column Headers (Local + GPT fallback)
             st.write("🧭 Correcting column headers...")
-            df.columns = [correct_column_name(col.strip().lower()) for col in df.columns]
+            new_columns = []
+            for col in df.columns:
+                corrected = correct_column_name(col)
+                new_columns.append(corrected)
+            df.columns = new_columns  # ✅ actually updates DataFrame headers
 
-            # Step 2️⃣ Basic Cleaning
+            # Step 2️⃣ — Local Cleaning
             progress.progress(25)
             df = df.applymap(lambda x: x.strip().title() if isinstance(x, str) else x)
             df = df.drop_duplicates()
 
-            # Step 3️⃣ AI Correction for Text Columns
+            # Step 3️⃣ — GPT Cleaning for Text Columns
             progress.progress(50)
             cache = {}
             text_columns = df.select_dtypes(include=["object"]).columns
@@ -146,7 +180,7 @@ if uploaded_file:
                             futures.append(executor.submit(correct_entity_openai, val, col))
                 results = [f.result() for f in futures]
 
-            # Step 4️⃣ Apply results back
+            # Step 4️⃣ — Apply Results Back
             idx = 0
             for col in text_columns:
                 new_col = []
@@ -158,7 +192,7 @@ if uploaded_file:
                     new_col.append(cache[key])
                 df[col] = new_col
 
-            # Step 5️⃣ Cost Estimation
+            # Step 5️⃣ — Cost Estimation
             progress.progress(90)
             for col in text_columns:
                 for val in df[col]:
@@ -166,14 +200,13 @@ if uploaded_file:
                     total_output_tokens += estimate_tokens(str(val))
             estimated_cost = (total_input_tokens * COST_INPUT) + (total_output_tokens * COST_OUTPUT)
 
+            # Step 6️⃣ — Display & Download
             progress.progress(100)
             st.success("✅ AI Cleaning Complete!")
             st.balloons()
 
-            # Step 6️⃣ Display & Download
             st.write("### 🧼 Cleaned Data Preview")
             st.dataframe(df.head(), use_container_width=True)
-
             st.markdown(f"### 💰 *Estimated OpenAI Cost: ${estimated_cost:.4f} USD*")
 
             csv_data = df.to_csv(index=False).encode("utf-8")
